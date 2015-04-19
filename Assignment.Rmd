@@ -1,0 +1,109 @@
+---
+title: "Practical Machine Learning"
+author: "Daniel Sobrado"
+date: "Sunday, April 19, 2015"
+output: html_document
+---
+
+##Summary##
+
+Smart wearable devices like Jawbone Up, Nike FuelBand, and Fitbit allows people to record their physical activity easily. However, few research was conducted on the quality of recorded physical activity. This analysis involved 6 participants, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The machine learning algorithm developed based on the recorded data could distinguish the types of barbell lifts very well.
+
+##Preparation##
+```{r import_packges, echo=TRUE}
+setwd("C:\\Workspaces\\workspace_R\\predmachlearn")
+
+library(ElemStatLearn, quietly=TRUE)
+library(data.table, quietly=TRUE)
+library(randomForest, quietly=TRUE)
+library(caret, quietly=TRUE)
+library(tree, quietly=TRUE)
+```
+
+Make the test reproducible.
+```{r reproducible, echo=TRUE}
+set.seed(222)
+```
+
+##Pre-processing and cleaning##
+we load the pre-processed data and perform some exploratory analysis
+```{r load_files, echo=TRUE}
+training <- read.csv("pml-training.csv", na.strings=c("", "NA", "NULL"))
+testingIn <- read.csv("pml-testing.csv", na.strings=c("", "NA", "NULL"))
+```
+
+#Cleaning the data#
+cleaning precedures were applied.
+```{r partion_data, echo=TRUE}
+trainingClean <- training[ , colSums(is.na(training)) == 0]
+testingInClean <- testingIn[ , colSums(is.na(testingIn)) == 0]
+
+dim(trainingClean)
+dim(testingInClean)
+```
+Removing extra columns
+```{r remove_columns, echo=TRUE}
+removeCols = c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window')
+trainingClean <- trainingClean[, -which(names(trainingClean) %in% removeCols)]
+testingInClean <- testingInClean[, -which(names(testingInClean) %in% removeCols)]
+dim(trainingClean)
+```
+
+##Correlations##
+Calculate correlations and plot a heatmap.
+```{r calculate_correlations, echo=TRUE}
+resultsCorrelation <- cor(trainingClean[, names(trainingClean) != 'classe'])
+palette <- colorRampPalette(c('blue', 'white', 'red'))(n = 199)
+heatmap(resultsCorrelation, col = palette)
+
+resultsCorrelation[(resultsCorrelation < -0.9 | resultsCorrelation > 0.9) & resultsCorrelation != 1]
+```
+
+##Partitioning##
+we'll put 60% for training and 40% for testing
+```{r create_partitions, echo=TRUE}
+partition <- createDataPartition(y=trainingClean$classe, p=0.6, list=FALSE)
+trainingPart <- trainingClean[partition,]
+testingPart <- trainingClean[-partition,]
+```
+The resulted training sub-group contains `r nrow(trainingPart)` observations while the testing contains `r nrow(testingPart)`.
+
+Let's see a summary tree.
+```{r summary_tree, echo=TRUE}
+trainingTree <- tree(classe~.,data=trainingPart)
+summary(trainingTree)
+
+plot(trainingTree)
+text(trainingTree,pretty=0, cex = .8)
+```
+
+#Use Random Forest#
+Our prdiction method will be a Random Forest
+```{r random_forest, echo=TRUE}
+methodRF <- randomForest(classe ~ ., data = trainingPart, proximity=TRUE)
+
+varImpPlot(methodRF,)
+```
+
+The final model selcted by random forest contains 500 trees with OOB estimate of error rate at 0.64%. 
+Then it was tested on testing sub-group which resulted 99% accuracy. Comparing to tree model, random forest model was a superior choice to validate.
+
+#Results#
+Those answers are showing that this random forest model did a good job.
+```{r apply_model, echo=TRUE}
+results <- predict(methodRF, newdata = testingInClean)
+results
+```
+
+#Write Results#
+```{r write_results, echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(results)
+```
